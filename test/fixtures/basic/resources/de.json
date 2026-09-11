@@ -1,0 +1,5 @@
+{
+  "welcome": "Willkommen, {name}!",
+  "hello": "Hallo, {firstName} {lastName}!",
+  "greeting": "Hallo zusammen!"
+}
