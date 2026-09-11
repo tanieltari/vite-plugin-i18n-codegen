@@ -27,19 +27,11 @@ export function toPluginErrorMessage(err: unknown): PluginErrorMessage {
   };
 }
 
-export function toRollupError(err: unknown): {
+export interface RollupErrorMessage extends PluginErrorMessage {
   name: string;
-  message: string;
-  stack: string;
-  id?: string;
-  plugin: string;
-} {
+}
+
+export function toRollupError(err: unknown): RollupErrorMessage {
   const base = err instanceof Error ? err : new Error(String(err));
-  return {
-    name: base.name,
-    message: base.message,
-    stack: base.stack ?? "",
-    id: err instanceof CodegenError ? err.id : undefined,
-    plugin: PLUGIN_NAME,
-  };
+  return { name: base.name, ...toPluginErrorMessage(err) };
 }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
-import { generateFiles, syncOutput } from "./codegen.js";
+import { generateFiles, isInsideDir, type LocaleCache, syncOutput } from "./codegen.js";
 import { PLUGIN_NAME, toPluginErrorMessage, toRollupError } from "./errors.js";
 
 export interface PluginOptions {
@@ -10,8 +10,18 @@ export interface PluginOptions {
   outDir?: string;
 }
 
-export type { GeneratedFile, CodegenOptions, ParsedLocale, TranslationEntry } from "./codegen.js";
+export type {
+  GeneratedFile,
+  CodegenOptions,
+  LocaleCache,
+  LocaleCacheEntry,
+  ParsedLocale,
+  TranslationEntry,
+} from "./codegen.js";
 export { CodegenError } from "./errors.js";
+
+type WatcherEvent = "add" | "change" | "unlink" | "addDir" | "unlinkDir";
+type WatcherListener = [WatcherEvent, (target: string) => void];
 
 export function i18nCodegen(options: PluginOptions = {}): Plugin {
   let config: ResolvedConfig | undefined;
@@ -19,8 +29,9 @@ export function i18nCodegen(options: PluginOptions = {}): Plugin {
   let srcDir = "";
   let outDir = "";
   const previous = new Map<string, string>();
+  const cache: LocaleCache = new Map();
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  let fsEventListener: ((filePath: string) => void) | undefined;
+  let listeners: WatcherListener[] = [];
 
   function resolvePaths(resolved: ResolvedConfig): void {
     srcDir = path.resolve(resolved.root, options.srcDir ?? "src/i18n/resources");
@@ -29,17 +40,23 @@ export function i18nCodegen(options: PluginOptions = {}): Plugin {
 
   function regenerate(): void {
     if (srcDir.length === 0 || outDir.length === 0) return;
-    const files = generateFiles({ srcDir, outDir });
-    syncOutput(files, previous);
+    const files = generateFiles({ srcDir, outDir }, cache);
+    syncOutput(files, previous, outDir);
   }
 
   function reportDevError(err: unknown): void {
-    if (!server) return;
     const message = toPluginErrorMessage(err);
     const display = `[${PLUGIN_NAME}] ${message.message}`;
-    server.config.logger.error(display, {
-      error: err instanceof Error ? err : new Error(String(err)),
-    });
+    const logger = server?.config.logger ?? config?.logger;
+    if (logger) {
+      logger.error(display, {
+        timestamp: true,
+        error: err instanceof Error ? err : new Error(String(err)),
+      });
+    } else {
+      console.error(display);
+    }
+    if (!server) return;
     try {
       server.ws.send({ type: "error", err: { ...message, message: display } });
     } catch {
@@ -72,7 +89,7 @@ export function i18nCodegen(options: PluginOptions = {}): Plugin {
       try {
         regenerate();
       } catch (err) {
-        if (config.command === "serve" && server) {
+        if (config.command === "serve") {
           reportDevError(err);
         } else {
           this.error(toRollupError(err));
@@ -87,25 +104,42 @@ export function i18nCodegen(options: PluginOptions = {}): Plugin {
       }
       currentServer.watcher.add(srcDir);
 
-      const onFsEvent = (filePath: string): void => {
+      const onFileEvent = (filePath: string): void => {
         if (!filePath.endsWith(".json")) return;
-        if (!filePath.startsWith(srcDir)) return;
+        if (!isInsideDir(srcDir, filePath)) return;
         scheduleRegenerate();
       };
-      fsEventListener = onFsEvent;
-      currentServer.watcher.on("add", onFsEvent);
-      currentServer.watcher.on("change", onFsEvent);
-      currentServer.watcher.on("unlink", onFsEvent);
+      // Removing or restoring the resources directory itself does not always emit
+      // per-file events, so react to directory events covering srcDir too.
+      const onDirEvent = (dirPath: string): void => {
+        if (dirPath !== srcDir && !isInsideDir(srcDir, dirPath)) return;
+        scheduleRegenerate();
+      };
+
+      listeners = [
+        ["add", onFileEvent],
+        ["change", onFileEvent],
+        ["unlink", onFileEvent],
+        ["addDir", onDirEvent],
+        ["unlinkDir", onDirEvent],
+      ];
+      for (const [event, listener] of listeners) {
+        currentServer.watcher.on(event, listener);
+      }
     },
 
     closeServer() {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = undefined;
-      if (server && fsEventListener) {
-        server.watcher.removeListener("add", fsEventListener);
-        server.watcher.removeListener("change", fsEventListener);
-        server.watcher.removeListener("unlink", fsEventListener);
+      if (server) {
+        for (const [event, listener] of listeners) {
+          server.watcher.removeListener(event, listener);
+        }
       }
+      listeners = [];
+      server = undefined;
+      previous.clear();
+      cache.clear();
     },
   };
 }
