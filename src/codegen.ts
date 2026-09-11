@@ -9,6 +9,8 @@ const HEADER = [
 ].join("\n");
 
 const JS_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const LOCALE_NAME = /^[A-Za-z0-9_]+$/;
+const OBJECT_PROPERTY_NAME = /^(?:[A-Za-z_$][A-Za-z0-9_$]*|[0-9]+)$/;
 
 const RESERVED_WORDS = new Set([
   "break",
@@ -114,6 +116,9 @@ export function generateFiles(options: CodegenOptions): GeneratedFile[] {
 }
 
 export function parseTranslationFile(filePath: string): ParsedLocale {
+  const locale = path.basename(filePath, ".json");
+  validateLocaleName(locale, filePath);
+
   let raw: string;
   try {
     raw = fs.readFileSync(filePath, "utf8");
@@ -151,8 +156,8 @@ export function parseTranslationFile(filePath: string): ParsedLocale {
 
   return {
     filePath,
-    locale: path.basename(filePath, ".json"),
-    identifier: toIdentifier(path.basename(filePath, ".json")),
+    locale,
+    identifier: toIdentifier(locale),
     entries,
   };
 }
@@ -254,6 +259,15 @@ function toIdentifier(name: string): string {
   return camel.length > 0 ? `_${camel}` : "_";
 }
 
+function validateLocaleName(locale: string, filePath: string): void {
+  if (!LOCALE_NAME.test(locale)) {
+    throw new CodegenError(
+      `Invalid locale filename "${path.basename(filePath)}". Locale names may only contain letters, numbers, and underscores`,
+      filePath,
+    );
+  }
+}
+
 function validateIdentifiers(locales: ParsedLocale[]): void {
   const seen = new Set<string>();
   for (const locale of locales) {
@@ -311,6 +325,10 @@ function keyLabel(key: string): string {
   return isValidIdentifier(key) ? key : JSON.stringify(key);
 }
 
+function propertyKeyLabel(key: string): string {
+  return OBJECT_PROPERTY_NAME.test(key) ? key : JSON.stringify(key);
+}
+
 function buildLocaleFile(locale: ParsedLocale): string {
   const lines = [
     HEADER,
@@ -343,7 +361,9 @@ function buildIndexFile(locales: ParsedLocale[], reference: ParsedLocale): strin
     "};",
     "export type Dictionary = Record<Locale, Translations>;",
     "",
-    `export const dictionary: Dictionary = { ${locales.map((locale) => locale.identifier).join(", ")} };`,
+    `export const dictionary: Dictionary = { ${locales
+      .map((locale) => `${propertyKeyLabel(locale.locale)}: ${locale.identifier}`)
+      .join(", ")} };`,
     "",
   ];
   return lines.join("\n");

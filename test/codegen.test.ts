@@ -159,16 +159,27 @@ describe("generateFiles", () => {
     );
   });
 
-  it("sanitizes locale names that are not valid identifiers", () => {
+  it("allows locale names with only letters, numbers and underscores", () => {
+    const srcDir = writeResources(tmpDir(), {
+      "en1.json": JSON.stringify({ hello: "Hello" }),
+      "en_US.json": JSON.stringify({ hello: "Hello" }),
+    });
+    const files = generateFiles({ srcDir, outDir: tmpDir() });
+    const index = files.find((file) => path.basename(file.path) === "index.ts");
+    expect(index?.content).toContain('export type Locale = "en_US" | "en1";');
+    expect(index?.content).toContain(
+      "export const dictionary: Dictionary = { en_US: en_US, en1: en1 };",
+    );
+  });
+
+  it("errors when a locale name contains a hyphen", () => {
     const srcDir = writeResources(tmpDir(), {
       "de.json": JSON.stringify({ hello: "Hallo" }),
       "en-US.json": JSON.stringify({ hello: "Hello" }),
     });
-    const files = generateFiles({ srcDir, outDir: tmpDir() });
-    const index = files.find((file) => path.basename(file.path) === "index.ts");
-    expect(index?.content).toContain('import enUS from "./en-US";');
-    expect(index?.content).toContain('export type Locale = "de" | "en-US";');
-    expect(index?.content).toContain("export const dictionary: Dictionary = { de, enUS };");
+    expect(() => generateFiles({ srcDir, outDir: tmpDir() })).toThrowError(
+      /Locale names may only contain letters, numbers, and underscores/,
+    );
   });
 
   it("prefixes reserved words when used as identifiers", () => {
@@ -178,15 +189,36 @@ describe("generateFiles", () => {
     const files = generateFiles({ srcDir, outDir: tmpDir() });
     const index = files.find((file) => path.basename(file.path) === "index.ts");
     expect(index?.content).toContain('import _if from "./if";');
+    expect(index?.content).toContain("export const dictionary: Dictionary = { if: _if };");
+  });
+
+  it("uses explicit dictionary keys when locale names are not shorthand-safe", () => {
+    const srcDir = writeResources(tmpDir(), {
+      "123.json": JSON.stringify({ hello: "Hello" }),
+    });
+    const files = generateFiles({ srcDir, outDir: tmpDir() });
+    const index = files.find((file) => path.basename(file.path) === "index.ts");
+    expect(index?.content).toContain('import _123 from "./123";');
+    expect(index?.content).toContain("export const dictionary: Dictionary = { 123: _123 };");
+  });
+
+  it("quotes dictionary keys that are valid locale names but not object property names", () => {
+    const srcDir = writeResources(tmpDir(), {
+      "1a.json": JSON.stringify({ hello: "Hello" }),
+    });
+    const files = generateFiles({ srcDir, outDir: tmpDir() });
+    const index = files.find((file) => path.basename(file.path) === "index.ts");
+    expect(index?.content).toContain('import _1a from "./1a";');
+    expect(index?.content).toContain('export const dictionary: Dictionary = { "1a": _1a };');
   });
 
   it("errors when two locales sanitize to the same identifier", () => {
     const srcDir = writeResources(tmpDir(), {
-      "a-b.json": JSON.stringify({ hello: "A" }),
-      "aB.json": JSON.stringify({ hello: "B" }),
+      "1.json": JSON.stringify({ hello: "A" }),
+      "_1.json": JSON.stringify({ hello: "B" }),
     });
     expect(() => generateFiles({ srcDir, outDir: tmpDir() })).toThrowError(
-      /same import identifier "aB"/,
+      /same import identifier "_1"/,
     );
   });
 

@@ -13,4 +13,4 @@ export type Translations = {
 };
 export type Dictionary = Record<Locale, Translations>;
 
-export const dictionary: Dictionary = { de, en_US };
+export const dictionary: Dictionary = { de: de, en_US: en_US };

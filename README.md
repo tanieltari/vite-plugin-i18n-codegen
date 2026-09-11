@@ -86,7 +86,7 @@ export type Translations = {
 };
 export type Dictionary = Record<Locale, Translations>;
 
-export const dictionary: Dictionary = { de, en_US };
+export const dictionary: Dictionary = { de: de, en_US: en_US };
 ```
 
 <!-- prettier-ignore -->
@@ -124,8 +124,9 @@ Every `{identifier}` in a translation value becomes a function parameter typed a
 
 ```ts
 // "Welcome, {name}!"
-(name: string) => `Welcome, ${name}!`
+(name: string) => `Welcome, ${name}!`;
 ```
+
 - Parameters are collected in order of first appearance and de-duplicated.
 - The first locale in alphabetical order (by file name) is the **reference** used to generate the `Translations` type; all other locales are checked against it via `satisfies`.
 
@@ -142,8 +143,9 @@ The plugin reports an error in the terminal and the Vite error overlay (and abor
 
 ### File naming
 
-- The locale id is the file name without the `.json` extension (e.g. `en_US.json` → `"en_US"`).
-- The import identifier is derived from the file name and sanitized if needed (e.g. `en-US.json` → `enUS`). A file name that can't be converted to a valid identifier, or that collides with another locale, is rejected.
+- The locale id is the file name without the `.json` extension (e.g. `en_US.json` -> `"en_US"`).
+- Locale file names may only contain letters, numbers, and underscores (`[A-Za-z0-9_]+.json`). For example, `en_US.json` is valid and `en-US.json` is rejected.
+- The import identifier is derived from the file name and sanitized if needed. A file name that collides with another locale after sanitization is rejected.
 
 ### Generated files
 
