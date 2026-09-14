@@ -7,9 +7,17 @@ import { i18nCodegen } from "../src/index.js";
 
 const servers: ViteDevServer[] = [];
 
+async function listenAndWaitForWatcher(server: ViteDevServer) {
+  const watcherReady = new Promise<void>((resolve) => server.watcher.once("ready", resolve));
+  await server.listen();
+  await watcherReady;
+}
+
 function makeProject(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "i18n-codegen-dev-"));
-  fs.mkdirSync(path.join(root, "src", "i18n", "resources"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src", "i18n", "resources"), {
+    recursive: true,
+  });
   fs.writeFileSync(
     path.join(root, "src", "i18n", "resources", "en.json"),
     JSON.stringify({ hello: "Hello, {name}!" }, null, 2),
@@ -34,7 +42,7 @@ describe("dev server integration", () => {
       plugins: [i18nCodegen()],
     });
     servers.push(server);
-    await server.listen();
+    await listenAndWaitForWatcher(server);
 
     try {
       await vi.waitFor(() => {
@@ -88,7 +96,7 @@ describe("dev server integration", () => {
       plugins: [i18nCodegen()],
     });
     servers.push(server);
-    await server.listen();
+    await listenAndWaitForWatcher(server);
 
     const sendSpy = vi.spyOn(server.ws, "send");
     const loggerError = vi.spyOn(server.config.logger, "error");
@@ -108,7 +116,11 @@ describe("dev server integration", () => {
 
       const errorPayload = sendSpy.mock.calls
         .map(
-          ([payload]) => payload as { type?: string; err?: { message?: string; plugin?: string } },
+          ([payload]) =>
+            payload as {
+              type?: string;
+              err?: { message?: string; plugin?: string };
+            },
         )
         .find((payload) => payload.type === "error");
       expect(errorPayload?.err?.message).toMatch(/not valid JSON/);
@@ -145,7 +157,7 @@ describe("dev server integration", () => {
       plugins: [i18nCodegen()],
     });
     servers.push(server);
-    await server.listen();
+    await listenAndWaitForWatcher(server);
 
     try {
       await vi.waitFor(() => {
@@ -167,7 +179,7 @@ describe("dev server integration", () => {
       plugins: [i18nCodegen()],
     });
     servers.push(server);
-    await server.listen();
+    await listenAndWaitForWatcher(server);
 
     const loggerError = vi.spyOn(server.config.logger, "error");
     const indexFile = path.join(root, "src", "i18n", "index.ts");
@@ -206,7 +218,7 @@ describe("dev server integration", () => {
         plugins: [i18nCodegen(options)],
       });
       servers.push(server);
-      await server.listen();
+      await listenAndWaitForWatcher(server);
 
       try {
         await vi.waitFor(() => {
