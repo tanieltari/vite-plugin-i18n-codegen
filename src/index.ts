@@ -23,7 +23,7 @@ export { CodegenError } from "./errors.js";
 type WatcherEvent = "add" | "change" | "unlink" | "addDir" | "unlinkDir";
 type WatcherListener = [WatcherEvent, (target: string) => void];
 
-export function i18nCodegen(options: PluginOptions = {}): Plugin {
+export function i18nCodegen(options: Partial<PluginOptions> = {}): Plugin {
   let config: ResolvedConfig | undefined;
   let server: ViteDevServer | undefined;
   let srcDir = "";

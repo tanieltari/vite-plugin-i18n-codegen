@@ -190,6 +190,36 @@ describe("dev server integration", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("allows partial plugin configs", async () => {
+    const cases = [
+      { name: "srcDir only", options: { srcDir: "src/i18n/resources" } },
+      { name: "outDir only", options: { outDir: "src/i18n" } },
+    ];
+
+    for (const { options } of cases) {
+      const root = makeProject();
+      const server = await createServer({
+        root,
+        logLevel: "error",
+        server: { watch: { interval: 50 } },
+        plugins: [i18nCodegen(options)],
+      });
+      servers.push(server);
+      await server.listen();
+
+      try {
+        await vi.waitFor(() => {
+          expect(fs.existsSync(path.join(root, "src", "i18n", "en.ts"))).toBe(true);
+        });
+        expect(fs.readFileSync(path.join(root, "src", "i18n", "en.ts"), "utf8")).toContain(
+          "Hello, ${name}!",
+        );
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 describe("build integration", () => {
